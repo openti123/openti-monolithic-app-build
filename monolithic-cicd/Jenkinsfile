@@ -7,7 +7,7 @@ pipeline {
         string(name: 'GITHUB_CREDENTIAL', defaultValue: 'github_creds', description: 'Github access credentials id')
         string(name: 'GITHUB_REPO_URL', defaultValue: 'https://github.com/openti123/openti-monolithic-app-build.git', description: 'Github repository URL')
         string(name: 'GITHUB_BRANCH', defaultValue: 'main', description: 'Github branch for your build')
-        string(name: 'SONARQUBE_SERVER_NAME', defaultValue: 'jenkins_server', description: 'Name for your SonarQube server')
+        string(name: 'SONARQUBE_SERVER_NAME', defaultValue: 'sonarqube_server', description: 'Name for your SonarQube server')
         string(name: 'NEXUS_URL', defaultValue: '52.23.218.240:8081', description: 'Your Nexus URL')
         string(name: 'NEXUS_CREDENTIAL', defaultValue: 'jenkins_nexus_creds', description: 'Your Nexus credentials')
         string(name: 'REMOTE_USER', defaultValue: 'ec2-user', description: 'Remote server username')
