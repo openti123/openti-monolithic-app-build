@@ -10,5 +10,11 @@
   "repo": "https://github.com/openti123/openti-monolithic-app-build.git",
   "branch": "main",
   "jenkinsfile": "secrets-manager/Jenkinsfile"
+},
+  {
+  "name": "Terraform-pipeline",
+  "repo": "https://github.com/openti123/openti-monolithic-app-build.git",
+  "branch": "main",
+  "jenkinsfile": "terraform/Jenkinsfile"
 }
 ]
