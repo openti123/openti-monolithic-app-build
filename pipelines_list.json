@@ -28,5 +28,23 @@
   "repo": "https://github.com/openti123/openti-monolithic-app-build.git",
   "branch": "main",
   "jenkinsfile": "monolithic-cicd/Jenkinsfile"
+},
+  {
+  "name": "terraform-micro-pipeline",
+  "repo": "https://github.com/openti123/openti-microservice-app.git",
+  "branch": "main",
+  "jenkinsfile": "terraform/Jenkinsfile"
+},
+  {
+  "name": "micro-cicd-pipeline",
+  "repo": "https://github.com/openti123/openti-microservice-app.git",
+  "branch": "main",
+  "jenkinsfile": "continuous-integration-continuous-deployment/Jenkinsfile"
+},
+  {
+  "name": "ansible-micro-pipeline",
+  "repo": "https://github.com/openti123/openti-microservice-app.git",
+  "branch": "main",
+  "jenkinsfile": "ansible/Jenkinsfile"
 }
 ]
