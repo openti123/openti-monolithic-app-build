@@ -1,0 +1,113 @@
+---
+- name: Install AWS CLI
+  hosts: jenkins
+  become: yes
+  tasks:
+    - name: Download AWS CLI
+      command: "curl -o /usr/local/bin/awscliv2.zip https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+      args:
+        creates: /usr/local/bin/awscliv2.zip
+
+    - name: Check if /usr/local/bin/aws exists as a file
+      stat:
+        path: /usr/local/bin/aws
+      register: aws_path
+
+    - name: Remove conflicting file if it exists
+      file:
+        path: /usr/local/bin/aws
+        state: absent
+      when: aws_path.stat.exists and not aws_path.stat.isdir
+
+- name: Install Maven, Git, Docker, and MySQL client on Jenkins
+  hosts: jenkins
+  become: yes
+  tasks:
+    - name: Install Maven using yum
+      command: yum install -y maven
+
+    - name: Install Git
+      command: yum install -y git
+
+    - name: Install Docker
+      command: yum install -y docker
+
+    - name: Start Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add Jenkins to the Docker group
+      user:
+        name: jenkins
+        groups: docker
+        append: yes
+
+    - name: Restart Docker service
+      systemd:
+        name: docker
+        state: restarted
+
+- name: Install Trivy v0.64.1
+  hosts: jenkins
+  become: yes
+  tasks:
+    - name: Download Trivy binary
+      get_url:
+        url: https://github.com/aquasecurity/trivy/releases/download/v0.64.1/trivy_0.64.1_Linux-64bit.tar.gz
+        dest: /tmp/trivy_0.64.1_Linux-64bit.tar.gz
+        mode: '0644'
+
+    - name: Ensure /tmp/trivy directory exists
+      file:
+        path: /tmp/trivy
+        state: directory
+        mode: '0755'
+
+    - name: Extract Trivy archive
+      unarchive:
+        src: /tmp/trivy_0.64.1_Linux-64bit.tar.gz
+        dest: /tmp/trivy/
+        remote_src: yes
+
+    - name: Move Trivy binary to /usr/local/bin
+      command: mv /tmp/trivy/trivy /usr/local/bin/trivy
+      args:
+        creates: /usr/local/bin/trivy
+
+    - name: Ensure Trivy is executable
+      file:
+        path: /usr/local/bin/trivy
+        mode: '0755'
+        state: file
+
+    - name: Verify Trivy installation
+      command: /usr/local/bin/trivy --version
+      register: trivy_version
+      changed_when: false
+
+    - name: Show Trivy version
+      debug:
+        msg: "{{ trivy_version.stdout }}"
+        
+- name: Prepare Jenkins user for Trivy scans
+  hosts: jenkins
+  become: yes
+  tasks:
+    - name: Create Trivy temp and cache directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: jenkins
+        group: jenkins
+        mode: '0755'
+      loop:
+        - /var/tmp/trivy
+        - /var/tmp/trivy-cache
+
+    - name: Ensure Jenkins user is part of the wheel group
+      user:
+        name: jenkins
+        groups: wheel
+        append: yes

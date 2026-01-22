@@ -1,0 +1,38 @@
+---
+- name: Deploy Grafana in Docker (host network, no port mapping)
+  hosts: grafana
+  become: yes
+  vars:
+    grafana_container_name: grafana
+    grafana_image: grafana/grafana:10.4.1
+    grafana_data_dir: /opt/grafana-data
+
+  tasks:
+    - name: Install Docker
+      dnf:
+        name: docker
+        state: present
+
+    - name: Start and enable Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Create Grafana data directory
+      file:
+        path: "{{ grafana_data_dir }}"
+        state: directory
+        owner: 472  # Grafana runs as UID 472
+        group: 472
+        mode: '0755'
+
+    - name: Run Grafana container using host network (no port mapping)
+      docker_container:
+        name: "{{ grafana_container_name }}"
+        image: "{{ grafana_image }}"
+        network_mode: host
+        volumes:
+          - "{{ grafana_data_dir }}:/var/lib/grafana"
+        restart_policy: always
+        state: started

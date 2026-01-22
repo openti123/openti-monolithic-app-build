@@ -1,0 +1,172 @@
+pipeline {
+    agent any
+    options {
+        timeout(time: 15, unit: 'MINUTES')
+    }
+    parameters {
+        string(name: 'GITHUB_CREDENTIAL', defaultValue: 'github_creds', description: 'Github access credentials id')
+        string(name: 'GITHUB_REPO_URL', defaultValue: 'https://github.com/itgenius-devops/itgenius-springboot-app-monolithic-cicd.git', description: 'Github repository URL')
+        string(name: 'GITHUB_BRANCH', defaultValue: 'main', description: 'Github branch for your build')
+        string(name: 'SONARQUBE_SERVER_NAME', defaultValue: 'sonarqube_server', description: 'Name for your SonarQube server')
+        string(name: 'NEXUS_URL', defaultValue: '3.95.198.231:8081', description: 'Your Nexus URL')
+        string(name: 'NEXUS_CREDENTIAL', defaultValue: 'jenkins_nexus_creds', description: 'Your Nexus credentials')
+        string(name: 'REMOTE_USER', defaultValue: 'ec2-user', description: 'Remote server username')
+        string(name: 'MONOLITHIC_SERVER', defaultValue: 'monolithic_server', description: 'The monolithic server Jenkins will SSH into using Publish Over SSH.')
+        string(name: 'DB_SECRET_ID', defaultValue: 'itgenius-db-secret', description: 'Secrets Manager ID for DB credentials')
+        string(name: 'DB_URL', defaultValue: 'jdbc:mysql://your-rds-endpoint:3306/itgeniusdb', description: 'JDBC Database URL')
+    }
+
+    environment {
+        REMOTE_USER = "${params.REMOTE_USER}"
+        GITHUB_CREDENTIAL = "${params.GITHUB_CREDENTIAL}"
+        GITHUB_REPO_URL = "${params.GITHUB_REPO_URL}"
+        GITHUB_BRANCH = "${params.GITHUB_BRANCH}"
+        SONARQUBE_SERVER_NAME = "${params.SONARQUBE_SERVER_NAME}"
+        NEXUS_URL = "${params.NEXUS_URL}"
+        NEXUS_CREDENTIAL = "${params.NEXUS_CREDENTIAL}"
+        MONOLITHIC_SERVER = "${params.MONOLITHIC_SERVER}"
+    }
+
+    stages {
+        stage("Validate Parameters") {
+            steps {
+                script {
+                    def requiredParameters = ['REMOTE_USER', 'GITHUB_CREDENTIAL', 'GITHUB_REPO_URL', 'GITHUB_BRANCH']
+                    for (param in requiredParameters) {
+                        if (!params.containsKey(param) || params[param].trim() == "") {
+                            error("Parameter '$param' is missing or empty. Please provide a value.")
+                        }
+                    }
+                }
+            }
+        }
+        stage('Clean Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+
+        stage("Checkout Code From GitHub") {
+            steps {
+                git branch: "${GITHUB_BRANCH}", credentialsId: "${GITHUB_CREDENTIAL}", url: "${GITHUB_REPO_URL}"
+            }
+        }
+
+        stage('Application Build') {
+            steps {
+                sh 'chmod +x ./mvnw'
+                sh './mvnw clean install'
+            }
+        }
+
+        stage('Application Test') {
+            steps {
+                sh 'chmod +x ./mvnw'
+                sh './mvnw test'
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                script {
+                    withSonarQubeEnv("${SONARQUBE_SERVER_NAME}") {
+                        sh './mvnw sonar:sonar'
+                    }
+                }
+            }
+        }
+
+        stage('Upload Snapshot to Nexus Repository') {
+            steps {
+                script {
+                    def artifactPath = "target/itgenius-0.0.1-SNAPSHOT.jar"
+                    nexusArtifactUploader(
+                        nexusVersion: 'nexus3',
+                        protocol: 'http',
+                        nexusUrl: "${NEXUS_URL}",
+                        groupId: 'com.itgenius',
+                        version: '0.0.1-SNAPSHOT',
+                        repository: 'itgenius-app-snapshot-repo',
+                        credentialsId: "${NEXUS_CREDENTIAL}",
+                        artifacts: [[
+                            artifactId: 'itgenius',
+                            classifier: '',
+                            file: artifactPath,
+                            type: 'jar',
+                            filename: "itgenius-0.0.1-SNAPSHOT.jar"
+                        ]]
+                    )
+                }
+            }
+        }
+
+        stage('Deploy To Monolithic Server') {
+            steps {
+                script {
+                    def deployCommand = """
+                        echo "====== Starting the application deployment in the Monolithic Server===="
+                        set +x
+                        mkdir -p ~/itgenius-app/
+                        cd ~/itgenius-app/
+
+                        # Export DB credentials from AWS Secrets Manager
+                        export DB_USERNAME=\$(aws secretsmanager get-secret-value --secret-id ${params.DB_SECRET_ID} --query 'SecretString' --output text | jq -r '.username')
+                        export DB_PASSWORD=\$(aws secretsmanager get-secret-value --secret-id ${params.DB_SECRET_ID} --query 'SecretString' --output text | jq -r '.password')
+
+                        # Run Spring Boot app with injected DB credentials and URL
+                        nohup java \\
+                        -Dspring.datasource.url='${params.DB_URL}' \\
+                        -Dspring.datasource.username=\$DB_USERNAME \\
+                        -Dspring.datasource.password=\$DB_PASSWORD \\
+                        -jar itgenius-0.0.1-SNAPSHOT.jar > logfile 2>&1 &
+
+                        sleep 10
+
+                        # Check if app is running
+                        if ! pgrep -f "itgenius-0.0.1-SNAPSHOT.jar" > /dev/null; then
+                        echo "Application failed to start (not running)."
+                        cat logfile
+                        exit 1
+                        fi
+
+                        # Inspect logs for startup issues
+                        if grep -q "Exception\\|Error" logfile; then
+                        echo "Application started but errors found in logs:"
+                        grep "Exception\\|Error" logfile
+                        exit 1
+                        fi
+                        set -x
+
+                        echo " Application started successfully."
+                        echo "======  Application Logs (begin) ======"
+                        set +x
+                        cat logfile
+                        set -x
+                        echo "======  End of Logs ======"
+
+                        """
+
+                    sshPublisher(publishers: [sshPublisherDesc(
+                        configName: env.MONOLITHIC_SERVER,
+                        transfers: [
+                            sshTransfer(
+                                sourceFiles: 'target/itgenius-0.0.1-SNAPSHOT.jar',
+                                removePrefix: 'target/',
+                                makeEmptyDirs: false,
+                                remoteDirectory: '/itgenius-app/',
+                                execCommand: deployCommand,
+                                execTimeout: 120000
+                                
+                            )
+                        ],
+                        usePromotionTimestamp: false,
+                        useWorkspaceInPromotion: false,
+                        verbose: true
+                    )])
+                }
+            }
+        }
+
+        
+    }
+}
