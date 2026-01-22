@@ -21,6 +21,6 @@
   "name": "ansible-pipeline",
   "repo": "https://github.com/openti123/openti-monolithic-app-build.git",
   "branch": "main",
-  "jenkinsfile": "terraform/Jenkinsfile"
+  "jenkinsfile": "ansible/Jenkinsfile"
 }
 ]
