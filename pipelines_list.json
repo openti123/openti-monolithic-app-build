@@ -22,5 +22,11 @@
   "repo": "https://github.com/openti123/openti-monolithic-app-build.git",
   "branch": "main",
   "jenkinsfile": "ansible/Jenkinsfile"
+},
+  {
+  "name": "cicd-pipeline",
+  "repo": "https://github.com/openti123/openti-monolithic-app-build.git",
+  "branch": "main",
+  "jenkinsfile": "monolithic-cicd/Jenkinsfile"
 }
 ]
